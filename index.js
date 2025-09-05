@@ -1,8 +1,10 @@
 
 const { RtcRole } = require('agora-token');
-const { RtcTokenBuilder } = require('agora-token');
 const express = require('express');
 const http = require('http');
+const cors = require("cors");
+const { generateToken } = require('./tools/token');
+const { default: axios } = require('axios');
 
 require("dotenv").config();
 
@@ -12,8 +14,18 @@ const PORT = process.env.PORT || 53001;
 
 app.use(express.json())
 
-app.get('/publisher', (req, res) => {
+const corsOptions = {
+    origin: '*',
+    credentials: true,            //access-control-allow-credentials:true
+    optionSuccessStatus: 200,
+}
+
+app.use(cors(corsOptions)) // Use this after the variable declaration
+
+
+app.get('/token', (req, res) => {
     const { channelName } = req.query;
+    console.log("New Request for channel: " + channelName);
 
     if (!channelName) {
         return res.status(400).json({ error: 'channelName is required' });
@@ -24,40 +36,38 @@ app.get('/publisher', (req, res) => {
     res.status(200).json({ token: tokenWithUid });
 });
 
-app.get('/subscriber', (req, res) => {
-    const { channelName } = req.query;
-    console.log(channelName);
-    if (!channelName) {
-        return res.status(400).json({ error: 'channelName is required' });
+app.get('/channel', async (req, res) => {
+    const plainCredentials = `${process.env.AGORA_RESTFUL_CUSTOMER_ID}:${process.env.AGORA_RESTFUL_CUSTOMER_SECRET}`;
+    const base64Credentials = Buffer.from(plainCredentials).toString('base64');
+    const response = await axios.create({
+        baseURL: 'https://api.agora.io',
+        timeout: 1000,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${base64Credentials}`
+        }
+    }).get('/dev/v1/channel/' + process.env.AGORA_APP_ID)
+    if (response.status !== 200 || !response.data.success) {
+        return res.status(500).json({ error: 'Failed to fetch channels' });
     }
-    const tokenWithUid = generateToken(channelName, RtcRole.SUBSCRIBER);
 
-    res.status(200).json({ token: tokenWithUid });
-});
+    // Retrieve active channel names
+    const channels = response.data.data.channels.map(channel => channel.channel_name);
 
-const generateToken = (channelName, role) => {
-    const appId = process.env.AGORA_APP_ID;
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+    // generate 6 number unique code
+    do {
+        var code = Math.floor(100000 + Math.random() * 900000)
+    } while (channels.includes(code))
 
-    const tokenExpirationInSecond = 3600;
-    const uid = 0
-    const privilegeExpirationInSeconds = 3600
-
-    // Generate Token
-    const tokenWithUid = RtcTokenBuilder.buildTokenWithUid(
-        appId,
-        appCertificate,
-        channelName,
-        uid,
-        role,
-        tokenExpirationInSecond,
-        privilegeExpirationInSeconds
-    )
-    return tokenWithUid;
-}
+    const token = generateToken(code.toString(), RtcRole.PUBLISHER);
+    res.status(200).json({
+        channelName: code,
+        token: token
+    })
+})
 
 const server = http.createServer(app);
 
 server.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is running on ${PORT}`);
 });
