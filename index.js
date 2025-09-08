@@ -56,7 +56,7 @@ app.get('/channel', async (req, res) => {
 
     // generate 6 number unique code
     do {
-        var code = Math.floor(100000 + Math.random() * 900000)
+        var code = Math.floor(100 + Math.random() * 900)
     } while (channels.includes(code))
 
     const token = generateToken(code.toString(), RtcRole.PUBLISHER);
