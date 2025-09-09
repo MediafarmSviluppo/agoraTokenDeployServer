@@ -23,8 +23,14 @@ const corsOptions = {
 app.use(cors(corsOptions)) // Use this after the variable declaration
 
 
-app.get('/token', (req, res) => {
+app.get('/token', async (req, res) => {
     const { channelName } = req.query;
+    if (req.headers['reject-if-empty-channel'] !== undefined) {
+        const channels = await getChannelList();
+        if (!channels.includes(channelName)) {
+            return res.status(404).json({ error: 'channelName does not exist' });
+        }
+    }
     console.log("New Request for channel: " + channelName);
 
     if (!channelName) {
@@ -37,6 +43,21 @@ app.get('/token', (req, res) => {
 });
 
 app.get('/channel', async (req, res) => {
+    const channels = await getChannelList();
+
+    // generate 6 number unique code
+    do {
+        var code = Math.floor(100 + Math.random() * 900)
+    } while (channels.includes(code))
+    console.log("New Request for new channel : " + code);
+    const token = generateToken(code.toString(), RtcRole.PUBLISHER);
+    res.status(200).json({
+        channelName: code,
+        token: token
+    })
+})
+
+const getChannelList = async () => {
     const plainCredentials = `${process.env.AGORA_RESTFUL_CUSTOMER_ID}:${process.env.AGORA_RESTFUL_CUSTOMER_SECRET}`;
     const base64Credentials = Buffer.from(plainCredentials).toString('base64');
     const response = await axios.create({
@@ -53,18 +74,8 @@ app.get('/channel', async (req, res) => {
 
     // Retrieve active channel names
     const channels = response.data.data.channels.map(channel => channel.channel_name);
-
-    // generate 6 number unique code
-    do {
-        var code = Math.floor(100 + Math.random() * 900)
-    } while (channels.includes(code))
-
-    const token = generateToken(code.toString(), RtcRole.PUBLISHER);
-    res.status(200).json({
-        channelName: code,
-        token: token
-    })
-})
+    return channels;
+}
 
 const server = http.createServer(app);
 
